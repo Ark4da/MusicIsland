@@ -1,0 +1,9 @@
+/* Applied only while content.js opens the queue panel to read it. */
+.mi-stealth-queue .queue {
+  opacity: 0 !important;
+  pointer-events: none !important;
+}
+
+.mi-stealth-queue .playbackSoundBadge__showQueue {
+  color: inherit !important;
+}

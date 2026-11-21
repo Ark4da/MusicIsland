@@ -1,0 +1,695 @@
+:root {
+  --bg: #080808;
+  --border: rgba(255, 255, 255, 0.08);
+  --text: #ffffff;
+  --muted: #8e8e93;
+  --track: #2c2c2e;
+  --accent: #4f6ef7;
+  --like: #ff5500;
+  --hover: rgba(255, 255, 255, 0.06);
+  --font: "SF Pro Display", -apple-system, "Segoe UI Variable Display", "Segoe UI", Inter, system-ui, sans-serif;
+  --morph-open: 0.55s cubic-bezier(0.32, 0.72, 0, 1);
+  --morph-close: 0.42s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+html,
+body {
+  width: 100%;
+  height: 100%;
+  background: transparent;
+  overflow: hidden;
+  user-select: none;
+  font-family: var(--font);
+  color: var(--text);
+  -webkit-font-smoothing: antialiased;
+}
+
+/* 24 px of transparent margin: the outer shadow below must fade out completely inside it. */
+body {
+  padding: 24px;
+}
+
+button {
+  font: inherit;
+  color: inherit;
+  background: none;
+  border: 0;
+  cursor: pointer;
+  outline: none;
+}
+
+.island.is-dragging,
+.island.is-dragging * {
+  cursor: grabbing !important;
+}
+
+/* The window never changes size: the card morphs inside it, because resizing a transparent
+   window on Windows stutters. Empty window area lets clicks through (see renderer.js). */
+.island {
+  /* Declared here, not on :root: a var() resolves where it is declared, so on :root these would
+     inherit as the default blue and ignore the [data-accent] override below. */
+  --accent-a: var(--accent);
+  --accent-b: var(--accent);
+  position: relative;
+  width: 356px;
+  height: 462px;
+  margin: 0 auto;
+  display: flex;
+  flex-direction: column;
+  padding: 18px 20px 20px;
+  transition:
+    width var(--morph-open),
+    height var(--morph-open),
+    padding var(--morph-open),
+    border-radius var(--morph-open);
+  background: var(--bg);
+  border-radius: 36px;
+  /* Extent of the big shadow: 8 px offset + 16 px blur − 2 px spread = 22 px, inside the 24 px margin. */
+  box-shadow:
+    inset 0 0 0 1px var(--border),
+    0 8px 16px -2px rgba(0, 0, 0, 0.5),
+    0 1px 4px rgba(0, 0, 0, 0.4);
+  overflow: hidden;
+  animation: island-in 0.5s cubic-bezier(0.2, 0.9, 0.25, 1.15) both;
+}
+
+@keyframes island-in {
+  from { opacity: 0; transform: scale(0.92) translateY(-8px); }
+  to { opacity: 1; transform: none; }
+}
+
+.now {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-height: 56px;
+}
+
+.artwork {
+  position: relative;
+  flex: none;
+  width: 56px;
+  height: 56px;
+  border-radius: 14px;
+  overflow: hidden;
+  background: linear-gradient(135deg, #24273a, #121318);
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.06);
+}
+
+.artwork__img {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  opacity: 0;
+  transform: scale(1.04);
+  transition: opacity 0.6s ease, transform 0.6s ease;
+}
+
+.artwork__img.is-shown {
+  opacity: 1;
+  transform: none;
+}
+
+.meta {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.marquee {
+  overflow: hidden;
+  white-space: nowrap;
+  font-size: 15px;
+  font-weight: 650;
+  letter-spacing: -0.01em;
+  line-height: 1.25;
+}
+
+.marquee.is-scrolling {
+  -webkit-mask-image: linear-gradient(90deg, transparent 0, #000 10px, #000 calc(100% - 14px), transparent);
+}
+
+.marquee__track {
+  display: inline-flex;
+}
+
+.marquee__text {
+  padding-right: 0;
+}
+
+.marquee.is-scrolling .marquee__text {
+  padding-right: 42px;
+}
+
+/* The marquee and the equalizer are moved from renderer.js by one low-rate timer (see "Motion"),
+   not by CSS animations: those run at the display's 60 fps and kept a core a third busy. */
+.marquee__track {
+  will-change: transform;
+}
+
+.artist {
+  font-size: 12.5px;
+  color: var(--muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.eq {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 2.5px;
+  height: 20px;
+  padding-right: 2px;
+}
+
+.eq span {
+  display: block;
+  width: 3px;
+  height: 20px;
+  border-radius: 2px;
+  background: linear-gradient(180deg, var(--accent-b), var(--accent-a));
+  transform-origin: center;
+  transform: scaleY(0.3);
+}
+
+/* At rest the bars settle into a fixed silhouette instead of freezing wherever the motion was:
+   frozen at random they can all end up full height and merge into a block. */
+.eq:not(.is-playing) span {
+  transition: transform 0.4s ease;
+}
+.eq:not(.is-playing) span:nth-child(1) { transform: scaleY(0.4); }
+.eq:not(.is-playing) span:nth-child(2) { transform: scaleY(0.85); }
+.eq:not(.is-playing) span:nth-child(3) { transform: scaleY(0.6); }
+.eq:not(.is-playing) span:nth-child(4) { transform: scaleY(0.3); }
+
+
+.timeline {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: 16px;
+}
+
+.time {
+  flex: none;
+  min-width: 34px;
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+  color: var(--muted);
+}
+
+.time--right { text-align: right; }
+
+.bar {
+  position: relative;
+  flex: 1;
+  height: 6px;
+  border-radius: 3px;
+  background: var(--track);
+  cursor: pointer;
+  transition: transform 0.2s ease;
+}
+
+.bar::before {
+  content: "";
+  position: absolute;
+  inset: -8px 0;
+}
+
+.bar:hover { transform: scaleY(1.35); }
+
+.bar__fill {
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: 0;
+  border-radius: inherit;
+  background: linear-gradient(90deg, var(--accent-a), var(--accent-b));
+}
+
+.controls {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-top: 10px;
+  padding: 0 4px;
+}
+
+.btn {
+  display: grid;
+  place-items: center;
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  color: var(--text);
+  transition: transform 0.15s ease, background-color 0.2s ease, color 0.2s ease, opacity 0.2s ease;
+}
+
+.btn:hover { background: var(--hover); }
+.btn:active { transform: scale(0.88); }
+
+.btn svg { fill: currentColor; }
+
+svg.stroke {
+  fill: none !important;
+  stroke: currentColor;
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.btn--small { color: var(--muted); }
+.btn--small svg { width: 19px; height: 19px; }
+.btn--skip svg { width: 30px; height: 22px; }
+.btn--play { width: 52px; height: 52px; }
+.btn--play svg { width: 30px; height: 30px; }
+
+.btn--play .icon-pause { display: none; }
+.island.is-playing .btn--play .icon-play { display: none; }
+.island.is-playing .btn--play .icon-pause { display: block; }
+
+#btnShuffle.is-active { color: var(--accent); }
+#btnLike.is-active { color: var(--like); }
+#btnLike.is-active svg { animation: pop 0.35s ease; }
+
+@keyframes pop {
+  50% { transform: scale(1.25); }
+}
+
+.volume-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 4px;
+  padding: 0 6px 0 2px;
+}
+
+.vol-btn {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  color: var(--muted);
+  transition: background-color 0.2s ease, color 0.2s ease;
+}
+
+.vol-btn:hover { background: var(--hover); color: var(--text); }
+.vol-btn svg { width: 17px; height: 17px; }
+.vol-speaker { fill: currentColor; }
+
+.vol-wave,
+.vol-x {
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2;
+  stroke-linecap: round;
+}
+
+.vol-x { display: none; }
+.vol-btn.is-low .vol-wave--2 { display: none; }
+.vol-btn.is-muted .vol-wave { display: none; }
+.vol-btn.is-muted .vol-x { display: block; }
+
+.bar--volume { height: 4px; border-radius: 2px; }
+.bar__fill--volume { background: rgba(255, 255, 255, 0.85); }
+
+.volume-row.is-unavailable {
+  opacity: 0.35;
+  pointer-events: none;
+}
+
+.queue {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  margin-top: 8px;
+  padding-top: 10px;
+  border-top: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.queue__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 2px 6px 6px;
+}
+
+.queue__label {
+  font-size: 10.5px;
+  font-weight: 600;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.queue__refresh {
+  display: grid;
+  place-items: center;
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  color: var(--muted);
+  transition: background-color 0.2s ease, color 0.2s ease;
+}
+
+.queue__refresh:hover { background: var(--hover); color: var(--text); }
+.queue__refresh svg { width: 14px; height: 14px; }
+.queue__refresh.is-loading svg { animation: spin 0.8s linear infinite; }
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+.queue__list {
+  list-style: none;
+  flex: 0 1 auto;
+  min-height: 0;
+  max-height: 180px;
+  -webkit-mask-image: linear-gradient(180deg, #000 calc(100% - 16px), transparent);
+  overflow-y: auto;
+  overflow-x: hidden;
+  margin-right: -8px;
+  padding-right: 4px;
+}
+
+.queue__list::-webkit-scrollbar { width: 4px; }
+.queue__list::-webkit-scrollbar-track { background: transparent; margin: 4px 0; }
+.queue__list::-webkit-scrollbar-thumb { background: rgba(255, 255, 255, 0.14); border-radius: 2px; }
+.queue__list::-webkit-scrollbar-thumb:hover { background: rgba(255, 255, 255, 0.26); }
+
+.queue__item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 5px 6px;
+  border-radius: 10px;
+  cursor: pointer;
+  transition: background-color 0.15s ease, transform 0.15s ease;
+  animation: item-in 0.35s ease both;
+}
+
+.queue__item:hover { background: var(--hover); }
+.queue__item:active { transform: scale(0.98); }
+
+@keyframes item-in {
+  from { opacity: 0; transform: translateY(4px); }
+}
+
+.queue__art {
+  flex: none;
+  width: 32px;
+  height: 32px;
+  border-radius: 6px;
+  object-fit: cover;
+  background: linear-gradient(135deg, #24273a, #121318);
+}
+
+.queue__text {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.queue__title,
+.queue__artist {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.queue__title { font-size: 12.5px; font-weight: 550; }
+.queue__artist { font-size: 11px; color: var(--muted); }
+
+.queue__empty {
+  display: none;
+  padding: 18px 6px;
+  font-size: 12px;
+  color: var(--muted);
+  text-align: center;
+}
+
+.queue.is-empty .queue__list { display: none; }
+.queue.is-empty .queue__empty { display: block; }
+
+.island.is-disconnected .timeline,
+.island.is-disconnected .controls,
+.island.is-disconnected .volume-row,
+.island.is-disconnected .queue {
+  opacity: 0.35;
+  pointer-events: none;
+}
+
+/* Collapsed pill. Opening: the card grows first, content fades in after it.
+   Closing: content fades out first, then the card shrinks. The title stays and only shrinks. */
+.meta {
+  transition: gap var(--morph-open);
+}
+
+.marquee {
+  transition: font-size var(--morph-open);
+}
+
+.artist {
+  max-height: 20px;
+  transition: opacity 0.3s ease 0.22s, max-height var(--morph-open);
+}
+
+.timeline,
+.controls,
+.volume-row,
+.queue {
+  transition: opacity 0.3s ease 0.22s;
+}
+
+.artwork,
+.now {
+  transition:
+    width var(--morph-open),
+    height var(--morph-open),
+    min-height var(--morph-open),
+    border-radius var(--morph-open);
+}
+
+.island.is-collapsed {
+  width: 288px;
+  height: 44px;
+  padding: 7px 16px 7px 7px;
+  border-radius: 22px;
+  cursor: pointer;
+  transition:
+    width var(--morph-close) 0.08s,
+    height var(--morph-close) 0.08s,
+    padding var(--morph-close) 0.08s,
+    border-radius var(--morph-close) 0.08s;
+}
+
+.island.is-collapsed .now {
+  min-height: 30px;
+  transition: min-height var(--morph-close) 0.08s;
+}
+
+.island.is-collapsed .artwork {
+  width: 30px;
+  height: 30px;
+  border-radius: 9px;
+  transition:
+    width var(--morph-close) 0.08s,
+    height var(--morph-close) 0.08s,
+    border-radius var(--morph-close) 0.08s;
+}
+
+.island.is-collapsed .meta {
+  gap: 0;
+  pointer-events: none;
+  transition: gap var(--morph-close) 0.08s;
+}
+
+.island.is-collapsed .marquee {
+  font-size: 13px;
+  transition: font-size var(--morph-close) 0.08s;
+}
+
+.island.is-collapsed .artist {
+  opacity: 0;
+  max-height: 0;
+  transition: opacity 0.12s ease, max-height var(--morph-close) 0.08s;
+}
+
+.island.is-collapsed .timeline,
+.island.is-collapsed .controls,
+.island.is-collapsed .volume-row,
+.island.is-collapsed .queue {
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.12s ease;
+}
+
+/* Two-stop presets: the progress line runs a → b left to right, the EQ bars b → a top to bottom. */
+.island[data-accent="violet"] { --accent: #a26bfa; }
+.island[data-accent="teal"] { --accent: #2dd4bf; }
+.island[data-accent="green"] { --accent: #34c759; }
+.island[data-accent="pink"] { --accent: #ff375f; }
+.island[data-accent="amber"] { --accent: #ffb340; }
+.island[data-accent="white"] { --accent: #f2f2f7; }
+.island[data-accent="sunset"] { --accent: #ff5a5f; --accent-a: #ff8a3d; --accent-b: #ff2d78; }
+.island[data-accent="aurora"] { --accent: #6aa8f7; --accent-a: #22d3ee; --accent-b: #a855f7; }
+
+/* Glass. The frost comes from the track's own artwork blurred inside the card, like the iOS
+   Now Playing glass. Windows acrylic would blur the real desktop, but it fills the whole rectangular
+   window and ignores the window shape (checked with setShape), so the corners would stay square. */
+.glass {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  border-radius: inherit;
+  overflow: hidden;
+  pointer-events: none;
+  opacity: 0;
+  background: radial-gradient(120% 90% at 20% 0%, rgba(79, 110, 247, 0.35), transparent 60%),
+    radial-gradient(90% 80% at 100% 100%, rgba(162, 107, 250, 0.25), transparent 65%);
+  transition: opacity 0.5s ease;
+}
+
+/* Fixed pixel size, centred: sized from the card it would be re-blurred on every frame of the morph. */
+.glass__img {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 560px;
+  height: 560px;
+  object-fit: cover;
+  transform: translate(-50%, -50%);
+  filter: blur(42px) saturate(1.5) brightness(0.72);
+  opacity: 0;
+  transition: opacity 0.8s ease;
+}
+
+.glass__img.is-shown { opacity: 0.75; }
+
+/* Specular sheen along the top and a darker floor so the white text stays readable on any cover. */
+.glass::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.10), rgba(255, 255, 255, 0) 32%),
+    linear-gradient(180deg, rgba(0, 0, 0, 0) 40%, rgba(0, 0, 0, 0.28));
+}
+
+.island > section {
+  position: relative;
+  z-index: 1;
+}
+
+.island.is-glass {
+  --muted: rgba(235, 235, 245, 0.62);
+  --track: rgba(255, 255, 255, 0.16);
+  --hover: rgba(255, 255, 255, 0.1);
+  /* Nearly opaque: the desktop behind is not blurred, so text there would show through sharp. */
+  background: rgba(16, 16, 20, 0.96);
+  box-shadow:
+    0 8px 16px -2px rgba(0, 0, 0, 0.45),
+    0 1px 4px rgba(0, 0, 0, 0.35);
+}
+
+/* The rim sits above the glass layer: an inset shadow on the card itself would be painted under it. */
+.island.is-glass::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  border-radius: inherit;
+  pointer-events: none;
+  box-shadow:
+    inset 0 0 0 1px rgba(255, 255, 255, 0.12),
+    inset 0 1px 0 rgba(255, 255, 255, 0.2),
+    inset 0 -1px 0 rgba(255, 255, 255, 0.05);
+}
+
+.island.is-glass .glass { opacity: 1; }
+.island.is-glass .queue { border-top-color: rgba(255, 255, 255, 0.1); }
+.island.is-glass .artwork { box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.12), 0 4px 12px rgba(0, 0, 0, 0.3); }
+
+/* Fixed gradient backgrounds. They reuse the glass tint, sheen and rim and replace only the blurred
+   cover. "Neon" reproduces the test cover seen through the glass: pink to violet to cyan with a warm spot.
+   Darkened by the same filter as the cover, so white text keeps its contrast. */
+.island:not([data-theme="cover"]) .glass__img { display: none; }
+
+.glass::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  opacity: 0;
+  filter: saturate(1.4) brightness(0.72);
+}
+
+.island[data-theme="neon"] .glass::before,
+.island[data-theme="sunset"] .glass::before,
+.island[data-theme="ocean"] .glass::before,
+.island[data-theme="aurora"] .glass::before { opacity: 0.8; }
+
+.island[data-theme="neon"] .glass::before {
+  background:
+    radial-gradient(75% 45% at 18% 44%, #ffd23f 0%, #ffc83a 30%, rgba(255, 180, 60, 0.45) 60%, transparent 85%),
+    linear-gradient(135deg, #ff3d7f -15%, #b02ee8 30%, #7b2ff7 55%, #00c2ff 125%);
+}
+
+.island[data-theme="sunset"] .glass::before {
+  background:
+    radial-gradient(60% 45% at 18% 12%, rgba(255, 179, 71, 0.9), transparent 70%),
+    radial-gradient(55% 50% at 90% 90%, rgba(58, 28, 113, 0.95), transparent 75%),
+    linear-gradient(160deg, #ff7a59 0%, #ff4e6a 35%, #c2185b 70%, #5b1a7a 100%);
+}
+
+.island[data-theme="ocean"] .glass::before {
+  background:
+    radial-gradient(55% 40% at 85% 8%, rgba(77, 208, 225, 0.9), transparent 70%),
+    radial-gradient(50% 45% at 12% 88%, rgba(45, 212, 191, 0.7), transparent 72%),
+    linear-gradient(165deg, #1b8fd6 0%, #1d4ed8 50%, #0b1f5c 100%);
+}
+
+.island[data-theme="aurora"] .glass::before {
+  background:
+    radial-gradient(60% 45% at 20% 15%, rgba(52, 211, 153, 0.9), transparent 70%),
+    radial-gradient(70% 55% at 92% 85%, #a855f7, rgba(124, 58, 237, 0.5) 45%, transparent 75%),
+    linear-gradient(170deg, #0f766e 0%, #155e75 45%, #312e81 100%);
+}
+
+.queue__service {
+  letter-spacing: 0.04em;
+  text-transform: none;
+  font-weight: 500;
+  opacity: 0.75;
+}
+
+/* Buttons keep pointer events so their "not available in …" tooltip still shows. */
+.btn.is-unavailable {
+  opacity: 0.3;
+  cursor: default;
+}
+.btn.is-unavailable:hover { background: none; }
+.btn.is-unavailable:active { transform: none; }
+
+.bar.is-unavailable {
+  opacity: 0.3;
+  pointer-events: none;
+}
+
+.queue.is-unavailable .queue__list,
+.queue.is-unavailable .queue__refresh { display: none; }
+.queue.is-unavailable .queue__empty { display: block; }

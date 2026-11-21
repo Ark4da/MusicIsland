@@ -1,0 +1,5 @@
+/* Applied only while adapters/spotify.js opens the queue panel to read it. */
+.mi-stealth-queue #Desktop_PanelContainer_Id {
+  opacity: 0 !important;
+  pointer-events: none !important;
+}

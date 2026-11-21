@@ -1,0 +1,105 @@
+{
+  "manifest_version": 3,
+  "name": "__MSG_extName__",
+  "default_locale": "en",
+  "version": "2.0.0",
+  "description": "__MSG_extDescription__",
+  "icons": {
+    "16": "icons/icon-16.png",
+    "32": "icons/icon-32.png",
+    "48": "icons/icon-48.png",
+    "128": "icons/icon-128.png"
+  },
+  "action": {
+    "default_title": "__MSG_extName__",
+    "default_icon": {
+      "16": "icons/icon-16.png",
+      "32": "icons/icon-32.png"
+    }
+  },
+  "minimum_chrome_version": "116",
+  "background": {
+    "service_worker": "background.js"
+  },
+  "permissions": [
+    "scripting"
+  ],
+  "host_permissions": [
+    "https://soundcloud.com/*",
+    "https://open.spotify.com/*",
+    "https://music.youtube.com/*",
+    "https://music.apple.com/*"
+  ],
+  "content_scripts": [
+    {
+      "matches": [
+        "https://soundcloud.com/*"
+      ],
+      "js": [
+        "lib.js",
+        "adapters/soundcloud.js",
+        "core.js"
+      ],
+      "css": [
+        "adapters/soundcloud.css"
+      ],
+      "run_at": "document_idle"
+    },
+    {
+      "matches": [
+        "https://open.spotify.com/*"
+      ],
+      "js": [
+        "lib.js",
+        "adapters/spotify.js",
+        "core.js"
+      ],
+      "css": [
+        "adapters/spotify.css"
+      ],
+      "run_at": "document_idle"
+    },
+    {
+      "matches": [
+        "https://music.youtube.com/*"
+      ],
+      "js": [
+        "lib.js",
+        "adapters/youtube-music.js",
+        "core.js"
+      ],
+      "run_at": "document_idle"
+    },
+    {
+      "matches": [
+        "https://music.youtube.com/*"
+      ],
+      "js": [
+        "page/youtube-music.js"
+      ],
+      "world": "MAIN",
+      "run_at": "document_idle"
+    },
+    {
+      "matches": [
+        "https://music.apple.com/*"
+      ],
+      "js": [
+        "lib.js",
+        "adapters/apple-music.js",
+        "core.js"
+      ],
+      "run_at": "document_idle"
+    },
+    {
+      "matches": [
+        "https://music.apple.com/*"
+      ],
+      "js": [
+        "page/apple-music.js"
+      ],
+      "world": "MAIN",
+      "run_at": "document_idle"
+    }
+  ]
+}

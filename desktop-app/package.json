@@ -1,0 +1,43 @@
+{
+  "name": "music-island",
+  "productName": "Music Island",
+  "version": "2.0.0",
+  "description": "Dynamic Island style desktop widget for SoundCloud, Spotify, YouTube Music and Apple Music playing in Chrome",
+  "author": "Ark4da",
+  "license": "MIT",
+  "main": "main.js",
+  "private": true,
+  "scripts": {
+    "start": "electron .",
+    "dist": "electron-builder --win portable --x64"
+  },
+  "dependencies": {
+    "ws": "^8.23.0"
+  },
+  "devDependencies": {
+    "electron": "^45.4.1",
+    "electron-builder": "^26.18.0"
+  },
+  "build": {
+    "appId": "io.github.musicisland",
+    "productName": "Music Island",
+    "directories": {
+      "output": "../dist"
+    },
+    "files": [
+      "main.js",
+      "preload.js",
+      "package.json",
+      "renderer/**",
+      "assets/**",
+      "!assets/make-icons.ps1",
+      "!assets/icon-source.jpg"
+    ],
+    "win": {
+      "icon": "assets/icon.ico"
+    },
+    "portable": {
+      "artifactName": "MusicIsland-${version}-portable.exe"
+    }
+  }
+}
