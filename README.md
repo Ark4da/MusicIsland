@@ -34,6 +34,13 @@ the main screen.
 - **Size** 70–160 % (Ctrl + wheel), position is remembered, English and Russian UI.
 - **Light** — a fraction of a percent of CPU while music plays, nothing when paused; ~80 MB of RAM.
 
+## Looks
+
+Six backgrounds and nine colours for the progress bar and equalizer, all switched from the
+right-click menu. *Artwork glass* takes its tint from the cover of the track that is playing.
+
+<p align="center"><img src="media/themes.png" alt="Music Island backgrounds and accent colours" width="680"></p>
+
 ## Supported services
 
 | Service | Track & controls | Seek | Volume | Queue | Like | Shuffle |
