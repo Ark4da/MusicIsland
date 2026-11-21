@@ -56,10 +56,13 @@ music.apple.com, soundcloud.com), не десктопные приложения
 1. **Приложение.** Скачай `MusicIsland-<версия>-portable.exe` на странице
    [Releases](../../releases) и запусти. Файл не подписан, поэтому Windows SmartScreen может
    предупредить: *Подробнее → Выполнить в любом случае*.
-2. **Расширение Chrome.** В Chrome Web Store его пока нет, поэтому оно ставится из репозитория:
-   - скачай репозиторий (*Code → Download ZIP*) и распакуй;
+2. **Расширение Chrome.** В Chrome Web Store его пока нет, поэтому оно ставится вручную:
+   - скачай `MusicIsland-Bridge-<версия>.zip` на той же странице [Releases](../../releases)
+     и распакуй;
    - открой `chrome://extensions`, включи **Режим разработчика**;
-   - **Загрузить распакованное** → выбери папку `browser-extension`.
+   - **Загрузить распакованное** → выбери распакованную папку `music-island-bridge`.
+
+   Не удаляй и не перемещай эту папку: Chrome загружает расширение из неё при каждом запуске.
 3. Открой SoundCloud, Spotify, YouTube Music или Apple Music в Chrome и включи трек.
 
 Чтобы островок запускался вместе с Windows, положи ярлык на `.exe` в `shell:startup`.

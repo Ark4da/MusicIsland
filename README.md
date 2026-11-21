@@ -55,11 +55,13 @@ follows the one that started playing last.
 1. **App.** Download `MusicIsland-<version>-portable.exe` from the
    [Releases](../../releases) page and run it. The file is not code-signed, so Windows SmartScreen
    may warn you: *More info → Run anyway*.
-2. **Chrome extension.** The extension is not in the Chrome Web Store yet, so it is loaded from
-   this repository:
-   - download the repository (*Code → Download ZIP*) and unpack it;
+2. **Chrome extension.** The extension is not in the Chrome Web Store yet, so it is loaded by hand:
+   - download `MusicIsland-Bridge-<version>.zip` from the same [Releases](../../releases) page
+     and unpack it;
    - open `chrome://extensions`, turn on **Developer mode**;
-   - **Load unpacked** → choose the `browser-extension` folder.
+   - **Load unpacked** → choose the unpacked `music-island-bridge` folder.
+
+   Keep the folder where it is: Chrome loads the extension from it every time it starts.
 3. Open SoundCloud, Spotify, YouTube Music or Apple Music in Chrome and start a track.
 
 To start the island with Windows, put a shortcut to the `.exe` into `shell:startup`.
