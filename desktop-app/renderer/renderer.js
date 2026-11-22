@@ -6,6 +6,7 @@ const ui = {
   glassImgs: [...document.querySelectorAll('.glass__img')],
   title: $('title'),
   artist: $('artist'),
+  meta: document.querySelector('.meta'),
   eq: $('eq'),
   elapsed: $('elapsed'),
   remaining: $('remaining'),
@@ -64,6 +65,7 @@ let artUrl = null;
 function setArtwork(url) {
   if (url === artUrl) return;
   artUrl = url;
+  updateAutoAccent();
   const back = ui.artImgs[1 - artFront];
   const front = ui.artImgs[artFront];
   // The glass tint is the same artwork, blurred: it crossfades in step with the cover.
@@ -575,9 +577,12 @@ window.island.onConnection((value) => {
 const NOT_DRAGGABLE = 'button, .bar, .queue__list';
 let dragPointer = null;
 let dragFrom = null;
+let downOnText = false;
 
 ui.island.addEventListener('pointerdown', (event) => {
   if (event.button !== 0 || event.target.closest(NOT_DRAGGABLE)) return;
+  // Remembered here: with pointer capture, click and dblclick are reported on the card, not the text.
+  downOnText = Boolean(event.target.closest('#title, #artist'));
   dragPointer = event.pointerId;
   dragFrom = { x: event.screenX, y: event.screenY };
   ui.island.setPointerCapture(dragPointer);
@@ -601,14 +606,124 @@ const endDrag = (event) => {
     manualCollapse = false;
     peek = true;
     updateCollapse();
+  } else if (event.type === 'pointerup' && !collapsed && downOnText && moved < CLICK_SLOP_PX) {
+    copyTrack();
   }
 };
 
 // Double-click on the card itself (not on a control or the queue) folds it into the pill at once.
 ui.island.addEventListener('dblclick', (event) => {
-  if (collapsed || event.target.closest(NOT_DRAGGABLE)) return;
+  // A double-click on the title or artist is two copies, not a collapse.
+  if (collapsed || downOnText || event.target.closest(NOT_DRAGGABLE)) return;
   collapseNow();
 });
+
+// The link when the extension knows it (SoundCloud), otherwise "Artist — Title".
+const COPIED_MS = 1200;
+let copiedTimer = null;
+
+function copyTrack() {
+  if (!connected || !state.hasTrack) return;
+  const link = /^https?:\/\//.test(state.trackUrl || '') ? state.trackUrl : '';
+  const text = link || (state.artist ? `${state.artist} — ${state.title}` : state.title);
+  window.island.copy(text);
+  ui.meta.classList.add('is-copied');
+  clearTimeout(copiedTimer);
+  copiedTimer = setTimeout(() => ui.meta.classList.remove('is-copied'), COPIED_MS);
+}
+
+// Auto accent: the most saturated hue of the cover, lifted or darkened so the bar stays visible on
+// the theme. Remote covers are read by main (a page cannot read cross-origin pixels); data: URLs
+// (test fixtures, placeholders) are drawn into a canvas here.
+const accentCache = new Map();
+let accentRequest = 0;
+
+async function artworkPixels(url) {
+  if (!url.startsWith('data:')) return window.island.artworkPixels(url);
+  const img = new Image();
+  img.src = url;
+  await img.decode();
+  const canvas = document.createElement('canvas');
+  canvas.width = canvas.height = 32;
+  const ctx = canvas.getContext('2d', { willReadFrequently: true });
+  ctx.drawImage(img, 0, 0, 32, 32);
+  return ctx.getImageData(0, 0, 32, 32).data;
+}
+
+function rgbToHsl(r, g, b) {
+  r /= 255; g /= 255; b /= 255;
+  const max = Math.max(r, g, b);
+  const min = Math.min(r, g, b);
+  const l = (max + min) / 2;
+  if (max === min) return [0, 0, l];
+  const d = max - min;
+  const s = l > 0.5 ? d / (2 - max - min) : d / (max + min);
+  const h = max === r ? (g - b) / d + (g < b ? 6 : 0) : max === g ? (b - r) / d + 2 : (r - g) / d + 4;
+  return [h * 60, s, l];
+}
+
+// Hues are pooled in 15° buckets weighted by saturation and by how far from black or white they
+// are, so a small vivid detail beats a large dull background, and near-greys do not count at all.
+function pickAccent(pixels) {
+  const buckets = Array.from({ length: 24 }, () => ({ w: 0, x: 0, y: 0, s: 0, l: 0 }));
+  let total = 0;
+  for (let i = 0; i < pixels.length; i += 4) {
+    if (pixels[i + 3] < 128) continue;
+    const [h, s, l] = rgbToHsl(pixels[i], pixels[i + 1], pixels[i + 2]);
+    if (s < 0.22 || l < 0.1 || l > 0.93) continue;
+    const w = s * s * (1 - Math.abs(l - 0.5) * 1.6);
+    if (w <= 0) continue;
+    const b = buckets[Math.floor(h / 15) % 24];
+    // Hue is averaged as a vector so 355° and 5° do not average to 180°.
+    b.w += w; b.x += Math.cos((h * Math.PI) / 180) * w; b.y += Math.sin((h * Math.PI) / 180) * w;
+    b.s += s * w; b.l += l * w;
+    total += w;
+  }
+  const best = buckets.reduce((a, b) => (b.w > a.w ? b : a));
+  if (total < 2) return null;
+  const h = ((Math.atan2(best.y, best.x) * 180) / Math.PI + 360) % 360;
+  return { h, s: best.s / best.w, l: best.l / best.w };
+}
+
+const clamp = (v, lo, hi) => Math.min(hi, Math.max(lo, v));
+const hsl = (h, s, l) => `hsl(${Math.round(h)} ${Math.round(s * 100)}% ${Math.round(l * 100)}%)`;
+
+function applyAutoAccent(color) {
+  const style = ui.island.style;
+  if (!color) {
+    // A grey cover: a quiet silver on dark themes, graphite on the light one.
+    style.setProperty('--auto-a', '#d1d1d6');
+    style.setProperty('--auto-b', '#a1a1aa');
+    style.setProperty('--auto-light-a', '#3a3a3c');
+    style.setProperty('--auto-light-b', '#636366');
+    return;
+  }
+  // Kept fairly light on dark themes: with "Glass from artwork" the card is tinted by the very same
+  // cover, and a mid-tone accent of that hue would sink into it.
+  const s = clamp(color.s, 0.55, 0.95);
+  style.setProperty('--auto-a', hsl(color.h, s, clamp(color.l, 0.66, 0.76)));
+  style.setProperty('--auto-b', hsl(color.h + 22, s, clamp(color.l + 0.08, 0.72, 0.84)));
+  style.setProperty('--auto-light-a', hsl(color.h, s, clamp(color.l, 0.36, 0.46)));
+  style.setProperty('--auto-light-b', hsl(color.h + 22, s, clamp(color.l - 0.06, 0.3, 0.42)));
+}
+
+async function updateAutoAccent() {
+  if (ui.island.dataset.accent !== 'auto' || !artUrl) return;
+  const url = artUrl;
+  const request = ++accentRequest;
+  let color = accentCache.get(url);
+  if (color === undefined) {
+    try {
+      const pixels = await artworkPixels(url);
+      color = pixels ? pickAccent(pixels) : null;
+    } catch {
+      color = null;
+    }
+    accentCache.set(url, color);
+  }
+  // A newer track may have started while this cover was being read.
+  if (request === accentRequest && url === artUrl) applyAutoAccent(color);
+}
 
 window.island.onCollapseNow(collapseNow);
 
@@ -637,6 +752,7 @@ window.island.onSettings((settings) => {
   ui.island.dataset.theme = theme;
   ui.island.classList.toggle('is-glass', theme !== 'black');
   ui.island.dataset.accent = settings.accent || 'blue';
+  updateAutoAccent();
   if (settings.lang && settings.lang !== lang) {
     applyLanguage(settings.lang);
     applyState(state);

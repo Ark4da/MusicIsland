@@ -27,19 +27,26 @@ the main screen.
   island = ±5 %, speaker icon = mute.
 - **Pill mode** — collapses to artwork + title + equalizer. Collapse on pause, always or never;
   double-click the card to fold it at any time, click the pill to open it.
-- **Looks** — glass tinted by the artwork, four gradient backgrounds or plain black; nine colours
-  for the progress bar and equalizer.
+- **Looks** — 11 themes: glass tinted by the artwork, frosted glass, titanium, monochrome,
+  SoundCloud, a light theme for light desktops, four gradients and plain black; nine colours for the
+  progress bar and equalizer, or *Auto*, which takes the colour from each cover.
+- **Copy the track** — click the title or artist to copy `Artist — Title` (or the track link when
+  the service provides one).
 - **Tray icon** — the island is not in the taskbar; left-click the tray icon to hide/show it,
   right-click for settings.
-- **Size** 70–160 % (Ctrl + wheel), position is remembered, English and Russian UI.
+- **Size** 70–160 % (Ctrl + wheel), position is remembered; optional launch with Windows.
+- **13 languages** — English, German, Spanish, French, Italian, Polish, Portuguese, Russian,
+  Turkish, Ukrainian, Japanese, Korean, Chinese (Simplified). The island follows the Windows
+  language list; right-click → *Language* to pick one by hand.
 - **Light** — a fraction of a percent of CPU while music plays, nothing when paused; ~80 MB of RAM.
 
 ## Looks
 
-Six backgrounds and nine colours for the progress bar and equalizer, all switched from the
-right-click menu. *Artwork glass* takes its tint from the cover of the track that is playing.
+Eleven themes and nine colours for the progress bar and equalizer, all switched from the
+right-click menu. *Artwork glass* takes its tint from the cover of the track that is playing;
+*Monochrome* and *SoundCloud* come with their own colours; *Light glass* is for light desktops.
 
-<p align="center"><img src="media/themes.png" alt="Music Island backgrounds and accent colours" width="680"></p>
+<p align="center"><img src="media/themes.png" alt="Music Island themes and accent colours" width="760"></p>
 
 ## Supported services
 
@@ -71,7 +78,7 @@ follows the one that started playing last.
    Keep the folder where it is: Chrome loads the extension from it every time it starts.
 3. Open SoundCloud, Spotify, YouTube Music or Apple Music in Chrome and start a track.
 
-To start the island with Windows, put a shortcut to the `.exe` into `shell:startup`.
+To start the island with Windows, right-click it → *Launch on startup*.
 
 ## Using it
 
@@ -83,6 +90,7 @@ To start the island with Windows, put a shortcut to the `.exe` into `shell:start
 | Collapse / expand | double-click the card / click the pill |
 | Settings | right-click the island or the tray icon |
 | Hide / show | left-click the tray icon |
+| Copy the track | click the title or artist |
 
 Windows 11 puts new tray icons under the **^** arrow; drag the icon to the taskbar to keep it visible.
 

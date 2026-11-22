@@ -51,11 +51,19 @@ button {
 
 /* The window never changes size: the card morphs inside it, because resizing a transparent
    window on Windows stutters. Empty window area lets clicks through (see renderer.js). */
+/* Registered as colours so a change of accent (the auto one follows every new cover) can be
+   transitioned instead of jumping. */
+@property --accent { syntax: '<color>'; inherits: true; initial-value: #4f6ef7; }
+@property --accent-a { syntax: '<color>'; inherits: true; initial-value: #4f6ef7; }
+@property --accent-b { syntax: '<color>'; inherits: true; initial-value: #4f6ef7; }
+
 .island {
   /* Declared here, not on :root: a var() resolves where it is declared, so on :root these would
      inherit as the default blue and ignore the [data-accent] override below. */
   --accent-a: var(--accent);
   --accent-b: var(--accent);
+  /* Resolved here so a theme that redefines --text (the light one) recolours every label inside. */
+  color: var(--text);
   position: relative;
   width: 356px;
   height: 462px;
@@ -67,7 +75,10 @@ button {
     width var(--morph-open),
     height var(--morph-open),
     padding var(--morph-open),
-    border-radius var(--morph-open);
+    border-radius var(--morph-open),
+    --accent 0.8s ease,
+    --accent-a 0.8s ease,
+    --accent-b 0.8s ease;
   background: var(--bg);
   border-radius: 36px;
   /* Extent of the big shadow: 8 px offset + 16 px blur − 2 px spread = 22 px, inside the 24 px margin. */
@@ -495,7 +506,10 @@ svg.stroke {
     width var(--morph-close) 0.08s,
     height var(--morph-close) 0.08s,
     padding var(--morph-close) 0.08s,
-    border-radius var(--morph-close) 0.08s;
+    border-radius var(--morph-close) 0.08s,
+    --accent 0.8s ease,
+    --accent-a 0.8s ease,
+    --accent-b 0.8s ease;
 }
 
 .island.is-collapsed .now {
@@ -548,6 +562,18 @@ svg.stroke {
 .island[data-accent="white"] { --accent: #f2f2f7; }
 .island[data-accent="sunset"] { --accent: #ff5a5f; --accent-a: #ff8a3d; --accent-b: #ff2d78; }
 .island[data-accent="aurora"] { --accent: #6aa8f7; --accent-a: #22d3ee; --accent-b: #a855f7; }
+/* --auto-* are set inline by renderer.js from the cover. Mono and SoundCloud, declared later with the
+   same specificity, still win: their colours are part of the theme. */
+.island[data-accent="auto"] {
+  --accent: var(--auto-a, #4f6ef7);
+  --accent-a: var(--auto-a, #4f6ef7);
+  --accent-b: var(--auto-b, #7b8ffa);
+}
+.island[data-theme="light"][data-accent="auto"] {
+  --accent: var(--auto-light-a, #3550d8);
+  --accent-a: var(--auto-light-a, #3550d8);
+  --accent-b: var(--auto-light-b, #2a3fb0);
+}
 
 /* Glass. The frost comes from the track's own artwork blurred inside the card, like the iOS
    Now Playing glass. Windows acrylic would blur the real desktop, but it fills the whole rectangular
@@ -693,3 +719,147 @@ svg.stroke {
 .queue.is-unavailable .queue__list,
 .queue.is-unavailable .queue__refresh { display: none; }
 .queue.is-unavailable .queue__empty { display: block; }
+
+/* Five more themes. Each one keeps the glass structure (tint, layer, rim) and changes its materials.
+   Mono and SoundCloud also fix the accent colour, because the colour is the point of the theme. */
+
+/* A rim drawn as a gradient border: the ring is the ::after box minus its content box. */
+.island.is-glass[data-theme="frosted"]::after,
+.island.is-glass[data-theme="mono"]::after,
+.island.is-glass[data-theme="titanium"]::after {
+  box-shadow: none;
+  padding: 1px;
+  -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+  -webkit-mask-composite: xor;
+  mask-composite: exclude;
+}
+
+/* Frosted glass: neutral, no colour from the artwork, a light catching the top-left edge. */
+.island.is-glass[data-theme="frosted"] { background: rgba(36, 38, 44, 0.96); }
+.island[data-theme="frosted"] .glass {
+  background:
+    radial-gradient(90% 60% at 15% 0%, rgba(255, 255, 255, 0.13), transparent 60%),
+    linear-gradient(160deg, rgba(255, 255, 255, 0.07), rgba(255, 255, 255, 0.02) 50%, rgba(255, 255, 255, 0.05));
+}
+.island.is-glass[data-theme="frosted"]::after {
+  background: linear-gradient(135deg, rgba(255, 255, 255, 0.8), rgba(255, 255, 255, 0.14) 26%, rgba(255, 255, 255, 0.04) 55%, rgba(255, 255, 255, 0.32));
+}
+
+/* Monochrome: black, white and silver like the icon. Queue covers stay grey until hovered. */
+.island[data-theme="mono"] {
+  --accent: #f5f5f7;
+  --accent-a: #ffffff;
+  --accent-b: #b4b8c0;
+  --like: #ffffff;
+}
+.island.is-glass[data-theme="mono"] {
+  --muted: rgba(220, 222, 228, 0.55);
+  --track: rgba(255, 255, 255, 0.14);
+  background: rgba(9, 9, 10, 0.97);
+}
+.island[data-theme="mono"] .glass {
+  background: radial-gradient(120% 70% at 50% 0%, rgba(255, 255, 255, 0.07), transparent 60%);
+}
+.island.is-glass[data-theme="mono"]::after {
+  background: linear-gradient(160deg, rgba(255, 255, 255, 0.6), rgba(255, 255, 255, 0.08) 35%, rgba(255, 255, 255, 0.04) 70%, rgba(200, 204, 212, 0.42));
+}
+.island[data-theme="mono"] .queue__art {
+  filter: grayscale(0.85);
+  transition: filter 0.3s ease;
+}
+.island[data-theme="mono"] .queue__item:hover .queue__art { filter: none; }
+
+/* Titanium: dark brushed metal with a silver bevel; the bevel is a thicker gradient border. */
+.island.is-glass[data-theme="titanium"] {
+  --muted: rgba(225, 228, 235, 0.6);
+  background: #1c1d20;
+}
+.island[data-theme="titanium"] .glass {
+  background:
+    linear-gradient(115deg, rgba(255, 255, 255, 0) 30%, rgba(255, 255, 255, 0.07) 42%, rgba(255, 255, 255, 0) 54%),
+    linear-gradient(160deg, #4a4e55 0%, #2a2c31 38%, #1d1f23 62%, #34373d 100%);
+}
+.island.is-glass[data-theme="titanium"]::after {
+  padding: 1.5px;
+  background: linear-gradient(160deg, #eef0f3, #8a9099 22%, #3a3d43 50%, #6d727b 78%, #c9cdd3);
+}
+
+/* SoundCloud: graphite with the brand orange glowing in from two corners. */
+.island[data-theme="soundcloud"] {
+  --accent: #ff5500;
+  --accent-a: #ff8a00;
+  --accent-b: #ff3d00;
+}
+.island.is-glass[data-theme="soundcloud"] { background: #18181a; }
+.island[data-theme="soundcloud"] .glass {
+  background:
+    radial-gradient(70% 45% at 100% 0%, rgba(255, 85, 0, 0.38), transparent 70%),
+    radial-gradient(60% 40% at 0% 100%, rgba(255, 85, 0, 0.22), transparent 70%),
+    linear-gradient(180deg, #232326, #161618);
+}
+.island.is-glass[data-theme="soundcloud"]::after {
+  box-shadow:
+    inset 0 0 0 1px rgba(255, 120, 40, 0.22),
+    inset 0 1px 0 rgba(255, 170, 110, 0.35);
+}
+
+/* Light glass: milky card, dark text and controls, for light desktops. */
+.island.is-glass[data-theme="light"] {
+  --text: #1c1c1e;
+  --muted: rgba(60, 60, 67, 0.62);
+  --track: rgba(0, 0, 0, 0.12);
+  --hover: rgba(0, 0, 0, 0.06);
+  background: rgba(244, 244, 247, 0.95);
+  box-shadow:
+    0 8px 18px -4px rgba(0, 0, 0, 0.28),
+    0 1px 4px rgba(0, 0, 0, 0.18);
+}
+.island[data-theme="light"] .glass {
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.75), rgba(255, 255, 255, 0) 45%),
+    radial-gradient(80% 60% at 100% 100%, rgba(170, 180, 210, 0.22), transparent 70%);
+}
+/* The dark floor that keeps white text readable on covers would only grey out a light card. */
+.island[data-theme="light"] .glass::after { background: none; }
+.island.is-glass[data-theme="light"]::after {
+  box-shadow:
+    inset 0 0 0 1px rgba(0, 0, 0, 0.08),
+    inset 0 1px 0 rgba(255, 255, 255, 0.95);
+}
+.island.is-glass[data-theme="light"] .queue { border-top-color: rgba(0, 0, 0, 0.08); }
+.island.is-glass[data-theme="light"] .artwork { box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.06), 0 4px 12px rgba(0, 0, 0, 0.15); }
+.island[data-theme="light"] .bar__fill--volume { background: rgba(28, 28, 30, 0.78); }
+.island[data-theme="light"] .queue__list::-webkit-scrollbar-thumb { background: rgba(0, 0, 0, 0.18); }
+.island[data-theme="light"] .queue__list::-webkit-scrollbar-thumb:hover { background: rgba(0, 0, 0, 0.3); }
+/* A white bar would vanish on this card; white turns into near-black here. */
+.island[data-theme="light"][data-accent="white"] {
+  --accent: #1c1c1e;
+  --accent-a: #1c1c1e;
+  --accent-b: #48484a;
+}
+
+/* Click-to-copy on the title and artist, with a short "Copied" note in their place. */
+#title,
+#artist { cursor: pointer; }
+
+.meta { position: relative; }
+.marquee { transition: font-size var(--morph-open), opacity 0.2s ease; }
+
+.copied {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  font-size: 14px;
+  font-weight: 650;
+  color: var(--accent-a);
+  opacity: 0;
+  transform: translateY(4px);
+  transition: opacity 0.25s ease, transform 0.25s ease;
+  pointer-events: none;
+}
+
+.meta.is-copied .copied { opacity: 1; transform: none; }
+.meta.is-copied .marquee,
+.meta.is-copied .artist { opacity: 0; }
+

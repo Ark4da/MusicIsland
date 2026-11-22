@@ -16,4 +16,6 @@ contextBridge.exposeInMainWorld('island', {
   onSettings: subscribe('island:settings'),
   onCollapseNow: subscribe('island:collapse-now'),
   onVisibility: subscribe('island:visibility'),
+  copy: (text) => ipcRenderer.send('island:copy', String(text)),
+  artworkPixels: (url) => ipcRenderer.invoke('island:artwork-pixels', String(url)),
 });

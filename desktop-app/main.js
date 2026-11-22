@@ -1,4 +1,4 @@
-const { app, BrowserWindow, ipcMain, screen, dialog, Menu, Tray, nativeImage, nativeTheme } = require('electron');
+const { app, BrowserWindow, ipcMain, screen, dialog, Menu, Tray, nativeImage, nativeTheme, clipboard, net } = require('electron');
 const path = require('path');
 const fs = require('fs');
 const { WebSocketServer } = require('ws');
@@ -108,6 +108,7 @@ function setScale(value) {
 
 // Colours themselves live in styles.css under [data-accent]; ids here only have to match.
 const ACCENTS = [
+  { id: 'auto', key: 'accentAuto' },
   { id: 'blue', key: 'accentBlue' },
   { id: 'violet', key: 'accentViolet' },
   { id: 'teal', key: 'accentTeal' },
@@ -127,6 +128,11 @@ const THEMES = [
   { id: 'sunset', key: 'themeSunset' },
   { id: 'ocean', key: 'themeOcean' },
   { id: 'aurora', key: 'themeAurora' },
+  { id: 'frosted', key: 'themeFrosted' },
+  { id: 'mono', key: 'themeMono' },
+  { id: 'titanium', key: 'themeTitanium' },
+  { id: 'soundcloud', key: 'themeSoundcloud' },
+  { id: 'light', key: 'themeLight' },
 ];
 
 const COLLAPSE_MODES = [
@@ -169,6 +175,58 @@ function settings() {
 
 const t = (key, vars) => i18n.translator(settings().lang)(key, vars);
 
+// Windows "Run" entry. A portable build unpacks itself into a temp folder on every start, so the
+// entry must point at the .exe the user launched; a source checkout starts electron.exe with the app folder.
+function loginItemOptions() {
+  if (process.env.PORTABLE_EXECUTABLE_FILE) return { path: process.env.PORTABLE_EXECUTABLE_FILE, args: [] };
+  if (app.isPackaged) return { path: process.execPath, args: [] };
+  return { path: process.execPath, args: [path.resolve(app.getAppPath())] };
+}
+
+// Read back from Windows rather than from the config: the user can also switch it off in Task
+// Manager (enabled = false). Looked up by our entry name: `openAtLogin` matches Electron's default
+// entry name, not the one set below.
+const launchesAtStartup = () =>
+  app.getLoginItemSettings(loginItemOptions()).launchItems.some((item) => item.name === APP_NAME && item.enabled);
+
+function setLaunchAtStartup(on) {
+  app.setLoginItemSettings({ openAtLogin: on, name: APP_NAME, ...loginItemOptions() });
+  writeConfig({ launchAtStartup: on });
+}
+
+// Artwork pixels for the "auto" accent. The covers live on the players' CDNs, and a page cannot read
+// cross-origin pixels from a canvas, so main downloads the image and hands over a 32x32 RGBA thumbnail.
+const ARTWORK_SAMPLE = 32;
+const pixelCache = new Map();
+
+async function artworkPixels(url) {
+  if (typeof url !== 'string' || !url.startsWith('https://')) return null;
+  if (pixelCache.has(url)) return pixelCache.get(url);
+  let result = null;
+  try {
+    const response = await net.fetch(url);
+    if (response.ok) {
+      const image = nativeImage.createFromBuffer(Buffer.from(await response.arrayBuffer()));
+      if (!image.isEmpty()) {
+        const bgra = image.resize({ width: ARTWORK_SAMPLE, height: ARTWORK_SAMPLE, quality: 'good' }).toBitmap();
+        const rgba = new Uint8Array(bgra.length);
+        for (let i = 0; i < bgra.length; i += 4) {
+          rgba[i] = bgra[i + 2];
+          rgba[i + 1] = bgra[i + 1];
+          rgba[i + 2] = bgra[i];
+          rgba[i + 3] = bgra[i + 3];
+        }
+        result = rgba;
+      }
+    }
+  } catch (err) {
+    console.error('[island] artwork fetch failed:', err.message);
+  }
+  if (pixelCache.size > 60) pixelCache.delete(pixelCache.keys().next().value);
+  pixelCache.set(url, result);
+  return result;
+}
+
 const sendSettings = () => sendToRenderer('island:settings', settings());
 
 function updateSetting(patch) {
@@ -198,9 +256,11 @@ function menuTemplate({ fromTray = false } = {}) {
     { label: tr('menuAccent'), submenu: radioList(ACCENTS, current.accent, 'accent') },
     { type: 'separator' },
     { label: tr('menuSize', { percent: percent(scale) }), enabled: false },
+    // Checkboxes, not radios: a radio group with nothing checked gets its first item checked by
+    // Electron, so a scale set with Ctrl + wheel (say 120 %) showed a dot on 80 %.
     ...SCALE_PRESETS.map((s) => ({
       label: percent(s),
-      type: 'radio',
+      type: 'checkbox',
       checked: Math.abs(s - scale) < 0.001,
       click: () => setScale(s),
     })),
@@ -221,6 +281,12 @@ function menuTemplate({ fromTray = false } = {}) {
         checked: id === current.languageChoice,
         click: () => updateSetting({ language: id }),
       })),
+    },
+    {
+      label: tr('menuStartup'),
+      type: 'checkbox',
+      checked: launchesAtStartup(),
+      click: (item) => setLaunchAtStartup(item.checked),
     },
     { type: 'separator' },
     { label: tr('menuQuit'), click: () => app.quit() },
@@ -469,6 +535,10 @@ ipcMain.on('island:command', (_event, { command, payload } = {}) => {
 ipcMain.on('island:drag', (_event, phase) => handleDrag(phase));
 ipcMain.on('island:scale', (_event, delta) => setScale(scale + Math.sign(Number(delta) || 0) * SCALE_STEP));
 ipcMain.on('island:menu', () => showContextMenu());
+ipcMain.on('island:copy', (_event, text) => {
+  if (typeof text === 'string' && text) clipboard.writeText(text.slice(0, 2000));
+});
+ipcMain.handle('island:artwork-pixels', (_event, url) => artworkPixels(url));
 ipcMain.on('island:interactive', (_event, on) => {
   if (win) win.setIgnoreMouseEvents(!on, { forward: true });
 });

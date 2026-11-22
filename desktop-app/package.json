@@ -1,7 +1,7 @@
 {
   "name": "music-island",
   "productName": "Music Island",
-  "version": "2.0.0",
+  "version": "2.1.0",
   "description": "Dynamic Island style desktop widget for SoundCloud, Spotify, YouTube Music and Apple Music playing in Chrome",
   "author": "Ark4da",
   "license": "MIT",
