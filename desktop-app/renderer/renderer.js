@@ -273,7 +273,34 @@ function setCollapsed(on) {
   if (on === collapsed) return;
   collapsed = on;
   ui.island.classList.toggle('is-collapsed', on);
+  // Main needs it to place the island at the screen edges: a pill and an open card settle differently.
+  window.island.reportCollapsed(on);
 }
+
+// Opening up: the pill sits at the bottom of the window and the card grows above it.
+const applyDirection = (dir) => document.body.classList.toggle('is-up', dir === 'up');
+applyDirection(new URLSearchParams(location.search).get('direction'));
+window.island.onDirection(applyDirection);
+
+const nextFrame = () => new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+
+// The pill swaps ends while the window moves the other way (see settle() in main.js): hidden
+// in between, so it never shows for a frame at the wrong place, then it pops back in.
+window.island.onFlip(async ({ direction, token }) => {
+  ui.island.style.visibility = 'hidden';
+  applyDirection(direction);
+  await nextFrame();
+  window.island.flipReady(token);
+});
+
+window.island.onFlipDone(async () => {
+  await nextFrame();
+  ui.island.style.visibility = '';
+  ui.island.animate(
+    [{ opacity: 0, transform: 'scale(0.9)' }, { opacity: 1, transform: 'none' }],
+    { duration: 240, easing: 'cubic-bezier(0.2, 0.9, 0.25, 1.15)' }
+  );
+});
 
 function updateCollapse() {
   if (shouldExpand()) {

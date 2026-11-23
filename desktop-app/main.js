@@ -10,6 +10,9 @@ const WS_PORT = 5055;
 // otherwise the window edge cuts it into a visible grey rectangle.
 const BASE_WIDTH = 404;
 const BASE_HEIGHT = 510;
+// Must match styles.css: body padding and the pill height.
+const WINDOW_MARGIN = 24;
+const PILL_HEIGHT = 44;
 const PING_INTERVAL_MS = 20000;
 const SCALE_MIN = 0.7;
 const SCALE_MAX = 1.6;
@@ -36,6 +39,10 @@ function migrateOldConfig() {
 let win = null;
 let wss = null;
 let scale = 1;
+// Which way the card opens from the pill: 'down' keeps the pill at the top of the window,
+// 'up' at the bottom, so a pill near the bottom of the screen does not open off it.
+let direction = 'down';
+let islandCollapsed = true;
 let lastState = null;
 let lastQueue = null;
 const clients = new Set();
@@ -66,14 +73,80 @@ const windowSize = (s = scale) => ({
   height: Math.round(BASE_HEIGHT * s),
 });
 
-function isVisibleOnSomeDisplay(x, y) {
-  const { width } = windowSize();
-  return screen.getAllDisplays().some(({ workArea: a }) =>
-    x >= a.x - width / 2 &&
-    y >= a.y - 30 &&
-    x + width / 2 <= a.x + a.width &&
-    y + 60 <= a.y + a.height
-  );
+// The card fills the window minus the transparent margin in both directions, so only the pill
+// changes place: at the top of the window when opening down, at the bottom when opening up.
+function geometry(bounds, dir) {
+  const m = WINDOW_MARGIN * scale;
+  const pill = PILL_HEIGHT * scale;
+  const card = { top: bounds.y + m, bottom: bounds.y + bounds.height - m };
+  const pillTop = dir === 'down' ? card.top : card.bottom - pill;
+  return { card, pill: { top: pillTop, bottom: pillTop + pill }, centerX: bounds.x + bounds.width / 2 };
+}
+
+// Where the island should settle and which way it opens. The pill (or the open card) picks the
+// half of its monitor it is in: lower half opens up, upper half opens down, unless only the
+// other way fits. Then the window is pushed so the whole open card stays on that monitor.
+function placement(bounds, dir, collapsed) {
+  const { width, height } = windowSize();
+  const m = WINDOW_MARGIN * scale;
+  const cardHeight = height - 2 * m;
+  const g = geometry({ ...bounds, width, height }, dir);
+  const focusY = collapsed ? (g.pill.top + g.pill.bottom) / 2 : (g.card.top + g.card.bottom) / 2;
+  const a = screen.getDisplayNearestPoint({ x: Math.round(g.centerX), y: Math.round(focusY) }).workArea;
+
+  let next = focusY > a.y + a.height / 2 ? 'up' : 'down';
+  if (collapsed) {
+    const fitsDown = g.pill.top + cardHeight <= a.y + a.height;
+    const fitsUp = g.pill.bottom - cardHeight >= a.y;
+    if (next === 'up' && !fitsUp && fitsDown) next = 'down';
+    else if (next === 'down' && !fitsDown && fitsUp) next = 'up';
+  }
+
+  // A flip of the pill keeps the pill where it is; an open card stays put either way.
+  let y = bounds.y;
+  if (collapsed && next !== dir) y = next === 'up' ? g.pill.bottom + m - height : g.pill.top - m;
+
+  const minY = a.y - m;
+  const maxY = a.y + a.height + m - height;
+  y = maxY < minY ? (next === 'down' ? minY : maxY) : Math.min(maxY, Math.max(minY, y));
+  const minX = a.x - m;
+  const maxX = a.x + a.width + m - width;
+  const x = maxX < minX ? a.x + (a.width - width) / 2 : Math.min(maxX, Math.max(minX, bounds.x));
+  return { bounds: { x: Math.round(x), y: Math.round(y), width, height }, direction: next };
+}
+
+let flipping = null;
+
+// A pill that changes direction has to jump to the other end of the window while the window
+// moves the opposite way. The two cannot happen in one frame, so the renderer hides the pill,
+// re-lays it out, and shows it again only after the window has moved.
+function settle() {
+  if (!win || win.isDestroyed() || drag || flipping) return;
+  const current = win.getBounds();
+  const { bounds, direction: next } = placement(current, direction, islandCollapsed);
+  if (next !== direction && islandCollapsed) {
+    const token = Date.now();
+    flipping = { token, bounds, next, timer: setTimeout(() => finishFlip(token), 400) };
+    sendToRenderer('island:flip', { direction: next, token });
+    return;
+  }
+  if (next !== direction) {
+    direction = next;
+    writeConfig({ direction });
+    sendToRenderer('island:direction', direction);
+  }
+  if (bounds.x !== current.x || bounds.y !== current.y) win.setBounds(bounds);
+}
+
+function finishFlip(token) {
+  if (!flipping || flipping.token !== token) return;
+  clearTimeout(flipping.timer);
+  const { bounds, next } = flipping;
+  flipping = null;
+  direction = next;
+  writeConfig({ direction });
+  if (win && !win.isDestroyed()) win.setBounds(bounds);
+  sendToRenderer('island:flip-done', token);
 }
 
 function defaultPosition() {
@@ -88,22 +161,27 @@ function defaultPosition() {
 
 function initialPosition() {
   const { x, y } = readConfig();
-  if (Number.isFinite(x) && Number.isFinite(y) && isVisibleOnSomeDisplay(x, y)) return { x, y };
+  // An off-screen or vanished-monitor position is pulled back by placement().
+  if (Number.isFinite(x) && Number.isFinite(y)) return { x, y };
   return defaultPosition();
 }
 
-// Resizing keeps the top edge and the horizontal centre in place, so the island grows
-// downward and to both sides like the real Dynamic Island.
+// Resizing keeps the pill's edge (top when opening down, bottom when opening up) and the
+// horizontal centre in place, so the island grows away from it and to both sides.
 function setScale(value) {
   const next = clampScale(value);
   if (!win || next === scale) return;
   const [x, y] = win.getPosition();
   const before = windowSize();
   const after = windowSize(next);
+  // The transparent margin scales too, so the pill's edge is kept rather than the window's.
+  const marginShift = WINDOW_MARGIN * (scale - next);
   scale = next;
-  win.setBounds({ x: Math.round(x + (before.width - after.width) / 2), y, ...after });
+  const ny = direction === 'up' ? y + before.height - after.height - marginShift : y + marginShift;
+  win.setBounds({ x: Math.round(x + (before.width - after.width) / 2), y: Math.round(ny), ...after });
   win.webContents.setZoomFactor(scale);
   writeConfig({ scale });
+  settle();
 }
 
 // Colours themselves live in styles.css under [data-accent]; ids here only have to match.
@@ -338,13 +416,17 @@ function handleDrag(phase) {
   const cursor = screen.getCursorScreenPoint();
   if (phase === 'start') {
     const [x, y] = win.getPosition();
-    drag = { dx: cursor.x - x, dy: cursor.y - y };
+    drag = { dx: cursor.x - x, dy: cursor.y - y, moved: false };
   } else if (phase === 'move' && drag) {
     // setBounds with an explicit size: setPosition across monitors with different DPI
     // lets Windows rescale the window.
     win.setBounds({ x: cursor.x - drag.dx, y: cursor.y - drag.dy, ...windowSize() });
+    drag.moved = true;
   } else if (phase === 'end') {
+    // Free movement while dragging (also across monitors); the screen edges apply on release.
+    const moved = drag?.moved;
     drag = null;
+    if (moved) settle();
   }
 }
 
@@ -355,11 +437,14 @@ function sendToRenderer(channel, payload) {
 function createWindow() {
   const saved = Number(readConfig().scale);
   scale = Number.isFinite(saved) ? clampScale(saved) : 1;
-  const { x, y } = initialPosition();
+  direction = readConfig().direction === 'up' ? 'up' : 'down';
+  // The island starts as a pill, so it is placed as one before the window exists.
+  const start = placement({ ...initialPosition(), ...windowSize() }, direction, true);
+  direction = start.direction;
+  // Saved together with the position, which is only meaningful with the direction it was saved in.
+  writeConfig({ direction });
   win = new BrowserWindow({
-    x,
-    y,
-    ...windowSize(),
+    ...start.bounds,
     frame: false,
     transparent: true,
     backgroundColor: '#00000000',
@@ -386,7 +471,8 @@ function createWindow() {
   // 'screen-saver' keeps the island above the taskbar and borderless-fullscreen apps;
   // the default 'floating' level loses to them on Windows.
   win.setAlwaysOnTop(true, 'screen-saver');
-  win.loadFile(path.join(__dirname, 'renderer', 'index.html'));
+  // In the URL rather than over IPC, so the very first frame already has the pill at the right end.
+  win.loadFile(path.join(__dirname, 'renderer', 'index.html'), { query: { direction } });
 
   win.once('ready-to-show', () => win.showInactive());
   // A hidden island (tray) stops its animations entirely.
@@ -404,6 +490,9 @@ function createWindow() {
 
   win.webContents.on('did-finish-load', () => {
     win.webContents.setZoomFactor(scale);
+    // A reload starts again as a pill, with whatever direction the URL had at first load.
+    islandCollapsed = true;
+    sendToRenderer('island:direction', direction);
     sendSettings();
     sendToRenderer('island:connection', clients.size > 0);
     if (lastState) sendToRenderer('island:state', lastState);
@@ -533,6 +622,10 @@ ipcMain.on('island:command', (_event, { command, payload } = {}) => {
 });
 
 ipcMain.on('island:drag', (_event, phase) => handleDrag(phase));
+ipcMain.on('island:collapsed', (_event, on) => {
+  islandCollapsed = Boolean(on);
+});
+ipcMain.on('island:flip-ready', (_event, token) => finishFlip(token));
 ipcMain.on('island:scale', (_event, delta) => setScale(scale + Math.sign(Number(delta) || 0) * SCALE_STEP));
 ipcMain.on('island:menu', () => showContextMenu());
 ipcMain.on('island:copy', (_event, text) => {
@@ -559,6 +652,10 @@ if (!app.requestSingleInstanceLock()) {
     startServer();
     createWindow();
     createTray();
+    // A monitor unplugged, rearranged or rescaled, or the taskbar moved: settle again.
+    for (const event of ['display-added', 'display-removed', 'display-metrics-changed']) {
+      screen.on(event, () => setTimeout(settle, 300));
+    }
   });
 
   app.on('window-all-closed', () => app.quit());

@@ -26,7 +26,8 @@ the main screen.
 - **Tab volume** — changes the volume of the player tab only, not of Windows. Mouse wheel over the
   island = ±5 %, speaker icon = mute.
 - **Pill mode** — collapses to artwork + title + equalizer. Collapse on pause, always or never;
-  double-click the card to fold it at any time, click the pill to open it.
+  double-click the card to fold it at any time, click the pill to open it. Near the bottom of the
+  screen the pill opens upward, and the island always settles fully inside the monitor.
 - **Looks** — 11 themes: glass tinted by the artwork, frosted glass, titanium, monochrome,
   SoundCloud, a light theme for light desktops, four gradients and plain black; nine colours for the
   progress bar and equalizer, or *Auto*, which takes the colour from each cover.
