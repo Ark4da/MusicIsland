@@ -10,9 +10,18 @@ const WS_PORT = 5055;
 // otherwise the window edge cuts it into a visible grey rectangle.
 const BASE_WIDTH = 404;
 const BASE_HEIGHT = 510;
-// Must match styles.css: body padding and the pill height.
+// Without Next Up the card ends under the volume row (219 px), and the window shrinks with it.
+const COMPACT_HEIGHT = 267;
+// Must match styles.css: body padding, the pill and the edge tab.
 const WINDOW_MARGIN = 24;
 const PILL_HEIGHT = 44;
+const PILL_WIDTH = 288;
+const CARD_WIDTH = 356;
+const TAB_HEIGHT = 100;
+// Released this close to a monitor's left or right edge, the island tucks into it.
+const DOCK_SNAP_PX = 20;
+// Same length and curve as the tab morph in styles.css, so the window and the card move as one.
+const DOCK_ANIM_MS = 300;
 const PING_INTERVAL_MS = 20000;
 const SCALE_MIN = 0.7;
 const SCALE_MAX = 1.6;
@@ -43,6 +52,10 @@ let scale = 1;
 // 'up' at the bottom, so a pill near the bottom of the screen does not open off it.
 let direction = 'down';
 let islandCollapsed = true;
+// Tucked into a side of the monitor ('left' | 'right'), with the window x to come back to.
+let docked = null;
+let dockReturnX = null;
+let showQueue = true;
 let lastState = null;
 let lastQueue = null;
 const clients = new Set();
@@ -68,9 +81,9 @@ function writeConfig(patch) {
 const clampScale = (value) =>
   Number(Math.min(SCALE_MAX, Math.max(SCALE_MIN, Math.round(value / SCALE_STEP) * SCALE_STEP)).toFixed(2));
 
-const windowSize = (s = scale) => ({
+const windowSize = (s = scale, queue = showQueue) => ({
   width: Math.round(BASE_WIDTH * s),
-  height: Math.round(BASE_HEIGHT * s),
+  height: Math.round((queue ? BASE_HEIGHT : COMPACT_HEIGHT) * s),
 });
 
 // The card fills the window minus the transparent margin in both directions, so only the pill
@@ -121,8 +134,13 @@ let flipping = null;
 // moves the opposite way. The two cannot happen in one frame, so the renderer hides the pill,
 // re-lays it out, and shows it again only after the window has moved.
 function settle() {
-  if (!win || win.isDestroyed() || drag || flipping) return;
+  if (!win || win.isDestroyed() || drag || flipping || windowAnim) return;
   const current = win.getBounds();
+  if (docked) {
+    const pinned = dockedBounds(current, docked);
+    if (pinned.x !== current.x || pinned.y !== current.y || pinned.height !== current.height) win.setBounds(pinned);
+    return;
+  }
   const { bounds, direction: next } = placement(current, direction, islandCollapsed);
   if (next !== direction && islandCollapsed) {
     const token = Date.now();
@@ -147,6 +165,92 @@ function finishFlip(token) {
   writeConfig({ direction });
   if (win && !win.isDestroyed()) win.setBounds(bounds);
   sendToRenderer('island:flip-done', token);
+}
+
+// Docking. The window is not pushed half off the screen to hide the card: on two monitors side by
+// side the hidden half would show up on the neighbour. Instead it stays whole on its monitor,
+// pinned flush to the inner side of the edge, and the renderer draws the tab against that side.
+function dockedBounds(bounds, side) {
+  const { width, height } = windowSize();
+  const a = screen.getDisplayMatching({ ...bounds, width, height }).workArea;
+  const m = WINDOW_MARGIN * scale;
+  const tab = TAB_HEIGHT * scale;
+  // The tab sits where the pill was (its top when opening down, its bottom when opening up) and is
+  // kept on the monitor; the rest of the window is transparent and click-through.
+  const tabTop = direction === 'down' ? bounds.y + m : bounds.y + height - m - tab;
+  const top = Math.min(a.y + a.height - tab, Math.max(a.y, tabTop));
+  const y = direction === 'down' ? top - m : top + tab + m - height;
+  const x = side === 'left' ? a.x : a.x + a.width - width;
+  return { x: Math.round(x), y: Math.round(y), width, height };
+}
+
+// The side whose edge the released island is within DOCK_SNAP_PX of (or past), if any.
+function snapSide(bounds) {
+  const { width } = windowSize();
+  const a = screen.getDisplayMatching(bounds).workArea;
+  const half = ((islandCollapsed ? PILL_WIDTH : CARD_WIDTH) * scale) / 2;
+  const center = bounds.x + width / 2;
+  if (center - half <= a.x + DOCK_SNAP_PX) return 'left';
+  if (center + half >= a.x + a.width - DOCK_SNAP_PX) return 'right';
+  return null;
+}
+
+let windowAnim = null;
+
+// Slides the window, eased like the CSS morph of the tab that runs at the same time.
+function animateWindow(to, done) {
+  if (windowAnim) clearInterval(windowAnim);
+  const from = win.getBounds();
+  const start = Date.now();
+  windowAnim = setInterval(() => {
+    if (!win || win.isDestroyed()) {
+      clearInterval(windowAnim);
+      windowAnim = null;
+      return;
+    }
+    const p = Math.min(1, (Date.now() - start) / DOCK_ANIM_MS);
+    const e = 1 - (1 - p) ** 3;
+    win.setBounds({
+      x: Math.round(from.x + (to.x - from.x) * e),
+      y: Math.round(from.y + (to.y - from.y) * e),
+      ...windowSize(),
+    });
+    if (p === 1) {
+      clearInterval(windowAnim);
+      windowAnim = null;
+      done?.();
+    }
+  }, 16);
+}
+
+function dock(side, returnX) {
+  if (!win || docked) return;
+  docked = side;
+  dockReturnX = returnX;
+  writeConfig({ docked, dockReturnX });
+  sendToRenderer('island:dock', side);
+  animateWindow(dockedBounds(win.getBounds(), side));
+}
+
+// Menu item and idle timer: the nearer side of the monitor the island is on, coming back to the
+// same x when the tab is clicked.
+function dockNow() {
+  if (!win || docked || drag) return;
+  const b = win.getBounds();
+  const a = screen.getDisplayMatching(b).workArea;
+  dock(b.x + b.width / 2 < a.x + a.width / 2 ? 'left' : 'right', b.x);
+}
+
+function undock() {
+  if (!win || !docked) return;
+  const b = win.getBounds();
+  docked = null;
+  writeConfig({ docked: null });
+  sendToRenderer('island:undock');
+  // The y stays where the tab is now, so a tab moved along the edge comes out at its new height.
+  const x = Number.isFinite(dockReturnX) ? dockReturnX : b.x;
+  // settle() afterwards pulls it back if that x is on a monitor that is gone.
+  animateWindow({ x, y: b.y }, settle);
 }
 
 function defaultPosition() {
@@ -181,6 +285,18 @@ function setScale(value) {
   win.setBounds({ x: Math.round(x + (before.width - after.width) / 2), y: Math.round(ny), ...after });
   win.webContents.setZoomFactor(scale);
   writeConfig({ scale });
+  settle();
+}
+
+// Next Up on or off: the window grows or shrinks with the card, keeping the pill's edge in place.
+function setShowQueue(on) {
+  if (!win || on === showQueue) return;
+  const [x, y] = win.getPosition();
+  const before = windowSize();
+  showQueue = on;
+  const after = windowSize();
+  updateSetting({ showQueue: on });
+  win.setBounds({ x, y: direction === 'up' ? y + before.height - after.height : y, ...after });
   settle();
 }
 
@@ -219,6 +335,14 @@ const COLLAPSE_MODES = [
   { id: 'never', key: 'collapseNever' },
 ];
 
+// When the island tucks into a side edge by itself; dragging it to an edge always works.
+// The idle timer runs in the renderer, which knows when the mouse was last over the island.
+const DOCK_MODES = [
+  { id: 'drag', key: 'dockDrag' },
+  { id: 'idle30', key: 'dockIdle30' },
+  { id: 'idle60', key: 'dockIdle60' },
+];
+
 function collapseModeFrom(config) {
   if (COLLAPSE_MODES.some((m) => m.id === config.collapseMode)) return config.collapseMode;
   // Configs from before the modes had only the "collapse when paused" checkbox.
@@ -246,6 +370,8 @@ function settings() {
     collapseMode: collapseModeFrom(config),
     theme: themeFrom(config),
     accent: ACCENTS.some((a) => a.id === config.accent) ? config.accent : 'blue',
+    dockMode: DOCK_MODES.some((d) => d.id === config.dockMode) ? config.dockMode : 'drag',
+    showQueue: config.showQueue !== false,
     languageChoice: choice,
     lang,
   };
@@ -349,6 +475,20 @@ function menuTemplate({ fromTray = false } = {}) {
     { label: tr('menuCollapseNow'), click: () => sendToRenderer('island:collapse-now') },
     { label: tr('menuCollapse'), submenu: radioList(COLLAPSE_MODES, current.collapseMode, 'collapseMode') },
     {
+      label: tr('menuDock'),
+      submenu: [
+        ...radioList(DOCK_MODES, current.dockMode, 'dockMode'),
+        { type: 'separator' },
+        { label: tr('dockNow'), enabled: !docked, click: dockNow },
+      ],
+    },
+    {
+      label: tr('menuShowQueue'),
+      type: 'checkbox',
+      checked: showQueue,
+      click: (item) => setShowQueue(item.checked),
+    },
+    {
       label: tr('menuLanguage'),
       submenu: [
         { id: 'auto', name: tr('menuLanguageAuto') },
@@ -415,18 +555,26 @@ function handleDrag(phase) {
   if (!win) return;
   const cursor = screen.getCursorScreenPoint();
   if (phase === 'start') {
+    if (windowAnim) {
+      clearInterval(windowAnim);
+      windowAnim = null;
+    }
     const [x, y] = win.getPosition();
-    drag = { dx: cursor.x - x, dy: cursor.y - y, moved: false };
+    drag = { dx: cursor.x - x, dy: cursor.y - y, startX: x, moved: false };
   } else if (phase === 'move' && drag) {
     // setBounds with an explicit size: setPosition across monitors with different DPI
-    // lets Windows rescale the window.
-    win.setBounds({ x: cursor.x - drag.dx, y: cursor.y - drag.dy, ...windowSize() });
+    // lets Windows rescale the window. A docked tab only slides along its edge.
+    const x = docked ? win.getPosition()[0] : cursor.x - drag.dx;
+    win.setBounds({ x, y: cursor.y - drag.dy, ...windowSize() });
     drag.moved = true;
   } else if (phase === 'end') {
     // Free movement while dragging (also across monitors); the screen edges apply on release.
-    const moved = drag?.moved;
+    const { moved, startX } = drag || {};
     drag = null;
-    if (moved) settle();
+    if (!moved) return;
+    const side = docked ? null : snapSide(win.getBounds());
+    if (side) dock(side, startX);
+    else settle();
   }
 }
 
@@ -435,16 +583,27 @@ function sendToRenderer(channel, payload) {
 }
 
 function createWindow() {
-  const saved = Number(readConfig().scale);
+  const config = readConfig();
+  const saved = Number(config.scale);
   scale = Number.isFinite(saved) ? clampScale(saved) : 1;
-  direction = readConfig().direction === 'up' ? 'up' : 'down';
-  // The island starts as a pill, so it is placed as one before the window exists.
-  const start = placement({ ...initialPosition(), ...windowSize() }, direction, true);
-  direction = start.direction;
+  showQueue = config.showQueue !== false;
+  direction = config.direction === 'up' ? 'up' : 'down';
+  // A tab tucked into an edge stays there across restarts.
+  docked = config.docked === 'left' || config.docked === 'right' ? config.docked : null;
+  dockReturnX = Number.isFinite(config.dockReturnX) ? config.dockReturnX : null;
+  let bounds;
+  if (docked) {
+    bounds = dockedBounds({ ...initialPosition(), ...windowSize() }, docked);
+  } else {
+    // The island starts as a pill, so it is placed as one before the window exists.
+    const start = placement({ ...initialPosition(), ...windowSize() }, direction, true);
+    direction = start.direction;
+    bounds = start.bounds;
+  }
   // Saved together with the position, which is only meaningful with the direction it was saved in.
   writeConfig({ direction });
   win = new BrowserWindow({
-    ...start.bounds,
+    ...bounds,
     frame: false,
     transparent: true,
     backgroundColor: '#00000000',
@@ -472,7 +631,7 @@ function createWindow() {
   // the default 'floating' level loses to them on Windows.
   win.setAlwaysOnTop(true, 'screen-saver');
   // In the URL rather than over IPC, so the very first frame already has the pill at the right end.
-  win.loadFile(path.join(__dirname, 'renderer', 'index.html'), { query: { direction } });
+  win.loadFile(path.join(__dirname, 'renderer', 'index.html'), { query: { direction, docked: docked || '' } });
 
   win.once('ready-to-show', () => win.showInactive());
   // A hidden island (tray) stops its animations entirely.
@@ -493,6 +652,7 @@ function createWindow() {
     // A reload starts again as a pill, with whatever direction the URL had at first load.
     islandCollapsed = true;
     sendToRenderer('island:direction', direction);
+    if (docked) sendToRenderer('island:dock', docked);
     sendSettings();
     sendToRenderer('island:connection', clients.size > 0);
     if (lastState) sendToRenderer('island:state', lastState);
@@ -626,6 +786,8 @@ ipcMain.on('island:collapsed', (_event, on) => {
   islandCollapsed = Boolean(on);
 });
 ipcMain.on('island:flip-ready', (_event, token) => finishFlip(token));
+ipcMain.on('island:dock-now', () => dockNow());
+ipcMain.on('island:undock', () => undock());
 ipcMain.on('island:scale', (_event, delta) => setScale(scale + Math.sign(Number(delta) || 0) * SCALE_STEP));
 ipcMain.on('island:menu', () => showContextMenu());
 ipcMain.on('island:copy', (_event, text) => {

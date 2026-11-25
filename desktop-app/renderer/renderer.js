@@ -245,6 +245,13 @@ const CLICK_SLOP_PX = 4;
 
 let collapsed = true;
 let collapseMode = 'paused';
+// Tucked into a side edge of the monitor as a small tab ('left' | 'right'); main.js owns the window.
+let docked = null;
+let dockMode = 'drag';
+let idleTimer = null;
+const DOCK_IDLE_MS = { idle30: 30000, idle60: 60000 };
+// Un-docking waits for the slide back before the island may open into the card.
+const UNDOCK_SETTLE_MS = 600;
 // Collapsed by hand (double-click or menu): stays a pill, music or not, until the pill is clicked.
 let manualCollapse = false;
 let peek = false;
@@ -253,7 +260,7 @@ let collapseTimer = null;
 let lingerTimer = null;
 
 function shouldExpand() {
-  if (manualCollapse) return false;
+  if (docked || manualCollapse) return false;
   if (peek || (hovering && !collapsed)) return true;
   if (collapseMode === 'never') return true;
   if (collapseMode === 'always') return false;
@@ -276,6 +283,39 @@ function setCollapsed(on) {
   // Main needs it to place the island at the screen edges: a pill and an open card settle differently.
   window.island.reportCollapsed(on);
 }
+
+function setDocked(side) {
+  docked = side === 'left' || side === 'right' ? side : null;
+  ui.island.classList.toggle('is-docked', Boolean(docked));
+  ui.island.classList.toggle('is-dock-left', docked === 'left');
+  if (docked) {
+    peek = false;
+    manualCollapse = false;
+    clearTimeout(collapseTimer);
+    collapseTimer = null;
+    setCollapsed(true);
+  }
+  resetIdle();
+}
+
+// "Hide at the edge after N s": counted from the last time the mouse was over the island.
+function resetIdle() {
+  clearTimeout(idleTimer);
+  idleTimer = null;
+  const ms = DOCK_IDLE_MS[dockMode];
+  if (!ms || docked) return;
+  idleTimer = setTimeout(() => {
+    if (hovering || dragPointer != null) resetIdle();
+    else window.island.dockNow();
+  }, ms);
+}
+
+setDocked(new URLSearchParams(location.search).get('docked'));
+window.island.onDock(setDocked);
+window.island.onUndock(() => {
+  setDocked(null);
+  setTimeout(updateCollapse, UNDOCK_SETTLE_MS);
+});
 
 // Opening up: the pill sits at the bottom of the window and the card grows above it.
 const applyDirection = (dir) => document.body.classList.toggle('is-up', dir === 'up');
@@ -325,10 +365,12 @@ ui.island.addEventListener('transitionend', (event) => {
 ui.island.addEventListener('mouseenter', () => {
   hovering = true;
   clearTimeout(lingerTimer);
+  resetIdle();
 });
 
 ui.island.addEventListener('mouseleave', () => {
   hovering = false;
+  resetIdle();
   clearTimeout(lingerTimer);
   lingerTimer = setTimeout(() => {
     peek = false;
@@ -388,7 +430,8 @@ function startMarquee(distance) {
 
 // Returns whether the title is in its moving phase (it rests MARQUEE_HOLD_MS at the start of each lap).
 function renderMarquee(now) {
-  if (!marquee.distance) return false;
+  // The tab has no title, so no 30 fps ticks for it.
+  if (!marquee.distance || docked) return false;
   const travelMs = (marquee.distance / MARQUEE_SPEED_PX_S) * 1000;
   const phase = (now - marquee.since) % (MARQUEE_HOLD_MS + travelMs);
   const x = phase < MARQUEE_HOLD_MS ? 0 : ((phase - MARQUEE_HOLD_MS) / travelMs) * marquee.distance;
@@ -397,7 +440,7 @@ function renderMarquee(now) {
 }
 
 // Each bar mixes two slow waves with its own periods, which reads as music rather than a pattern.
-const EQ_WAVES = [[0.82, 1.9], [0.58, 1.3], [0.97, 2.3], [0.69, 1.7]];
+const EQ_WAVES = [[0.82, 1.9], [0.58, 1.3], [0.97, 2.3], [0.69, 1.7], [0.76, 2.1]];
 
 function renderEq(now) {
   const t = now / 1000;
@@ -629,7 +672,13 @@ const endDrag = (event) => {
   // A click (not a drag) on the pill opens the island until the mouse leaves it,
   // so playback can be started from here while nothing is playing.
   const moved = dragFrom && Math.hypot(event.screenX - dragFrom.x, event.screenY - dragFrom.y);
-  if (event.type === 'pointerup' && collapsed && moved < CLICK_SLOP_PX) {
+  resetIdle();
+  // A click on the edge tab brings the island back to where it was before it was tucked away.
+  if (event.type === 'pointerup' && docked && moved < CLICK_SLOP_PX) {
+    window.island.undock();
+  } else if (docked) {
+    // Dragged along the edge: nothing else to do.
+  } else if (event.type === 'pointerup' && collapsed && moved < CLICK_SLOP_PX) {
     manualCollapse = false;
     peek = true;
     updateCollapse();
@@ -641,7 +690,7 @@ const endDrag = (event) => {
 // Double-click on the card itself (not on a control or the queue) folds it into the pill at once.
 ui.island.addEventListener('dblclick', (event) => {
   // A double-click on the title or artist is two copies, not a collapse.
-  if (collapsed || downOnText || event.target.closest(NOT_DRAGGABLE)) return;
+  if (docked || collapsed || downOnText || event.target.closest(NOT_DRAGGABLE)) return;
   collapseNow();
 });
 
@@ -775,6 +824,9 @@ document.documentElement.addEventListener('mouseleave', () => {
 
 window.island.onSettings((settings) => {
   collapseMode = settings.collapseMode || 'paused';
+  dockMode = settings.dockMode || 'drag';
+  resetIdle();
+  ui.island.classList.toggle('no-queue', settings.showQueue === false);
   const theme = settings.theme || 'cover';
   ui.island.dataset.theme = theme;
   ui.island.classList.toggle('is-glass', theme !== 'black');
@@ -798,6 +850,7 @@ window.addEventListener('contextmenu', (event) => {
 // Ctrl + wheel resizes the island; a plain wheel over the card changes the tab's volume,
 // except over the queue list, which it scrolls.
 window.addEventListener('wheel', (event) => {
+  resetIdle();
   if (event.ctrlKey) {
     event.preventDefault();
     window.island.scale(event.deltaY < 0 ? 1 : -1);

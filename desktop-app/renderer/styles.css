@@ -10,6 +10,8 @@
   --font: "SF Pro Display", -apple-system, "Segoe UI Variable Display", "Segoe UI", Inter, system-ui, sans-serif;
   --morph-open: 0.55s cubic-bezier(0.32, 0.72, 0, 1);
   --morph-close: 0.42s cubic-bezier(0.4, 0, 0.2, 1);
+  /* Same length and curve as the window slide in main.js (DOCK_ANIM_MS, ease-out cubic). */
+  --dock: 0.3s cubic-bezier(0.215, 0.61, 0.355, 1);
 }
 
 * {
@@ -85,6 +87,7 @@ button {
     height var(--morph-open),
     padding var(--morph-open),
     border-radius var(--morph-open),
+    transform var(--dock),
     --accent 0.8s ease,
     --accent-a 0.8s ease,
     --accent-b 0.8s ease;
@@ -96,7 +99,9 @@ button {
     0 8px 16px -2px rgba(0, 0, 0, 0.5),
     0 1px 4px rgba(0, 0, 0, 0.4);
   overflow: hidden;
-  animation: island-in 0.5s cubic-bezier(0.2, 0.9, 0.25, 1.15) both;
+  /* `backwards`, not `both`: a fill after the end would pin transform to none for good and
+     cancel the edge tab's shift. */
+  animation: island-in 0.5s cubic-bezier(0.2, 0.9, 0.25, 1.15) backwards;
 }
 
 @keyframes island-in {
@@ -212,6 +217,10 @@ button {
 .eq:not(.is-playing) span:nth-child(2) { transform: scaleY(0.85); }
 .eq:not(.is-playing) span:nth-child(3) { transform: scaleY(0.6); }
 .eq:not(.is-playing) span:nth-child(4) { transform: scaleY(0.3); }
+.eq:not(.is-playing) span:nth-child(5) { transform: scaleY(0.5); }
+
+/* The fifth bar belongs to the edge tab, which is wide enough for it; the pill and card keep four. */
+.eq span:nth-child(5) { display: none; }
 
 
 .timeline {
@@ -515,6 +524,7 @@ svg.stroke {
     height var(--morph-close) 0.08s,
     padding var(--morph-close) 0.08s,
     border-radius var(--morph-close) 0.08s,
+    transform var(--dock),
     --accent 0.8s ease,
     --accent-a 0.8s ease,
     --accent-b 0.8s ease;
@@ -560,6 +570,79 @@ svg.stroke {
   pointer-events: none;
   transition: opacity 0.12s ease;
 }
+
+/* Next Up switched off: the card ends under the volume row (main.js shrinks the window to match). */
+.island.no-queue .queue { display: none; }
+.island.no-queue:not(.is-collapsed) { height: 219px; }
+
+/* Edge tab: the island tucked into a side of the monitor. Only the cover and the equalizer are left,
+   one above the other. The window is pinned to the monitor's edge by main.js, and the tab is pushed
+   against that side of the window: 50vw is the window's centre, where the island sits otherwise.
+   It stays a collapsed island underneath (is-collapsed), so un-docking leaves a pill. */
+.island.is-docked {
+  width: 72px;
+  height: 100px;
+  padding: 14px 12px;
+  border-radius: 24px 0 0 24px;
+  transform: translateX(calc(50vw - 36px));
+  cursor: pointer;
+  transition:
+    width var(--dock),
+    height var(--dock),
+    padding var(--dock),
+    border-radius var(--dock),
+    transform var(--dock),
+    --accent 0.8s ease,
+    --accent-a 0.8s ease,
+    --accent-b 0.8s ease;
+}
+
+/* Hover pulls the tab 7 px out by widening it rather than moving it, so it never leaves a gap at the
+   screen edge: a cursor pushed against the edge would fall into it and make the tab twitch. */
+.island.is-docked:hover {
+  width: 79px;
+  transform: translateX(calc(50vw - 39.5px));
+}
+
+.island.is-docked.is-dock-left {
+  border-radius: 0 24px 24px 0;
+  transform: translateX(calc(36px - 50vw));
+}
+
+.island.is-docked.is-dock-left:hover {
+  transform: translateX(calc(39.5px - 50vw));
+}
+
+.island.is-docked .now {
+  /* Without flex: none the hidden sections below squeeze it to zero height in the 100 px tab. */
+  flex: none;
+  flex-direction: column;
+  justify-content: center;
+  gap: 8px;
+  min-height: 0;
+}
+
+.island.is-docked .artwork {
+  width: 48px;
+  height: 48px;
+  border-radius: 12px;
+  transition: width var(--dock), height var(--dock), border-radius var(--dock);
+}
+
+.island.is-docked .meta {
+  position: absolute;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.island.is-docked .eq {
+  height: 16px;
+  gap: 3px;
+  padding: 0;
+}
+
+.island.is-docked .eq span { height: 16px; }
+.island.is-docked .eq span:nth-child(5) { display: block; }
 
 /* Two-stop presets: the progress line runs a → b left to right, the EQ bars b → a top to bottom. */
 .island[data-accent="violet"] { --accent: #a26bfa; }

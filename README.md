@@ -28,6 +28,11 @@ the main screen.
 - **Pill mode** — collapses to artwork + title + equalizer. Collapse on pause, always or never;
   double-click the card to fold it at any time, click the pill to open it. Near the bottom of the
   screen the pill opens upward, and the island always settles fully inside the monitor.
+- **Tuck into the screen edge** — drop the island at the left or right edge of a monitor and it
+  slides into a small tab with the cover and the equalizer; click the tab to bring it back where it
+  was. It can also hide by itself after 30 s or 1 min without the mouse over it. On two monitors
+  the tab stays on its own screen and never spills onto the neighbour.
+- **Next Up on or off** — right-click → *Show Next Up* for a compact card without the queue.
 - **Looks** — 11 themes: glass tinted by the artwork, frosted glass, titanium, monochrome,
   SoundCloud, a light theme for light desktops, four gradients and plain black; nine colours for the
   progress bar and equalizer, or *Auto*, which takes the colour from each cover.
@@ -92,6 +97,8 @@ To start the island with Windows, right-click it → *Launch on startup*.
 | Settings | right-click the island or the tray icon |
 | Hide / show | left-click the tray icon |
 | Copy the track | click the title or artist |
+| Tuck into the edge | drop it at a monitor's left or right edge, or right-click → *Hide at screen edge* |
+| Bring it back | click the tab; drag the tab to move it along the edge |
 
 Windows 11 puts new tray icons under the **^** arrow; drag the icon to the taskbar to keep it visible.
 
