@@ -8,6 +8,7 @@ const ui = {
   artist: $('artist'),
   meta: document.querySelector('.meta'),
   eq: $('eq'),
+  volHud: $('volHud'),
   elapsed: $('elapsed'),
   remaining: $('remaining'),
   bar: $('bar'),
@@ -858,11 +859,23 @@ window.addEventListener('wheel', (event) => {
   }
   if (event.target.closest('.queue__list') || !event.target.closest('.island')) return;
   const current = shownVolume();
-  if (current == null || !connected || collapsed) return;
+  if (current == null || !connected) return;
   event.preventDefault();
   const next = Math.round(Math.min(1, Math.max(0, current + (event.deltaY < 0 ? VOLUME_STEP : -VOLUME_STEP))) * 100) / 100;
   sendVolume(next, true);
+  if (collapsed || docked) flashVolume(next);
 }, { passive: false });
+
+// The pill and the edge tab show the new level for a moment where the equalizer is.
+const VOLUME_HUD_MS = 1200;
+let volumeHudTimer = null;
+
+function flashVolume(value) {
+  ui.volHud.textContent = `${Math.round(value * 100)} %`;
+  ui.island.classList.add('is-volume-hud');
+  clearTimeout(volumeHudTimer);
+  volumeHudTimer = setTimeout(() => ui.island.classList.remove('is-volume-hud'), VOLUME_HUD_MS);
+}
 
 window.island.onState(applyState);
 window.island.onQueue(renderQueue);

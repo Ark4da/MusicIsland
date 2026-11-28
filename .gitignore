@@ -2,3 +2,5 @@ node_modules/
 dist/
 # Working notes of the development process; kept locally, not published.
 docs/pipeline/
+# Promo videos (HyperFrames projects and their footage); kept locally.
+promo/
